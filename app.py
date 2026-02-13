@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # In-memory job tracker  (swap for Redis/DB in production)
 # ---------------------------------------------------------------------------
-jobs: dict = {}
+jobs = {}
 
 
 def _run_demo(job_id, demo_script, extra_args=None):
@@ -113,7 +113,7 @@ def list_demos():
                 "on 12 June 2019.  Produces an animation of the traveling "
                 "ionospheric disturbance."
             ),
-            "script": "demos/vandenburg.py",
+            "script": "missile-tid/demos/vandenburg.py",
             "type": "replay",
         },
         {
@@ -123,7 +123,7 @@ def list_demos():
                 "Monitors GNSS data near the Korean peninsula for potential "
                 "ballistic missile launches in near-real-time."
             ),
-            "script": "demos/live.py",
+            "script": "missile-tid/demos/live.py",
             "type": "live",
         },
     ]
@@ -138,7 +138,7 @@ def run_demo():
     if demo_id not in ("vandenberg", "korea"):
         return jsonify({"error": "Unknown demo_id"}), 400
 
-    script = "demos/vandenburg.py" if demo_id == "vandenberg" else "demos/live.py"
+    script = "missile-tid/demos/vandenburg.py" if demo_id == "vandenberg" else "missile-tid/demos/live.py"
     job_id = str(uuid.uuid4())[:8]
     jobs[job_id] = {
         "job_id": job_id,

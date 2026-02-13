@@ -1,0 +1,4 @@
+cache_dir: ~/.gnss_cache/
+
+logging:
+  level: DEBUG

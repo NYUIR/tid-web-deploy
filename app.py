@@ -45,14 +45,12 @@ logger = logging.getLogger(__name__)
 # Locate demo scripts dynamically
 # ---------------------------------------------------------------------------
 def find_file(name, search_root="missile-tid"):
-    """Search for a file by name under a root directory."""
     for root, dirs, files in os.walk(search_root):
         if name in files:
             return os.path.join(root, name)
     return None
 
 def find_any_file(names, search_root="missile-tid"):
-    """Search for any of the given filenames, return first match."""
     for name in names:
         result = find_file(name, search_root)
         if result:
@@ -60,7 +58,6 @@ def find_any_file(names, search_root="missile-tid"):
     return None
 
 def find_all_files(search_root="missile-tid"):
-    """List all .py files for debugging."""
     py_files = []
     for root, dirs, files in os.walk(search_root):
         for f in files:
@@ -68,29 +65,23 @@ def find_all_files(search_root="missile-tid"):
                 py_files.append(os.path.join(root, f))
     return py_files
 
-# Log all Python files at startup for debugging
 logger.info("=== All .py files in missile-tid ===")
 for f in find_all_files():
     logger.info("  %s", f)
 logger.info("=== end ===")
 
-# Search for Vandenberg script with multiple possible spellings
 VANDENBERG_SCRIPT = find_any_file([
-    "vandenburg.py",
     "vandenberg.py",
-    "Vandenburg.py",
+    "vandenburg.py",
     "Vandenberg.py",
-    "vandenburg_demo.py",
-    "vandenberg_demo.py",
+    "Vandenburg.py",
 ])
 
 LIVE_SCRIPT = find_any_file([
     "live.py",
     "Live.py",
-    "live_demo.py",
 ])
 
-# Find the missile-tid root (the dir that contains requirements.txt)
 MISSILE_TID_ROOT = None
 req_file = find_file("requirements.txt", "missile-tid")
 if req_file:
@@ -107,11 +98,9 @@ jobs = {}
 
 
 def _run_demo(job_id, demo_script, extra_args=None):
-    """Execute a TID demo script in a subprocess and capture output."""
     jobs[job_id]["status"] = "running"
     jobs[job_id]["started_at"] = datetime.utcnow().isoformat()
 
-    # Use the missile-tid root as the working directory so imports work
     cwd = MISSILE_TID_ROOT or os.path.dirname(demo_script) or "."
     abs_script = os.path.abspath(demo_script)
 
@@ -150,15 +139,9 @@ def _run_demo(job_id, demo_script, extra_args=None):
 
     # Search broadly for generated output files
     artifacts = []
-    # Check our designated output dir
     for ext in ("*.png", "*.gif", "*.mp4", "*.html", "*.jpg", "*.svg"):
         artifacts.extend(
-            str(p.relative_to(OUTPUT_DIR)) for p in job_output_dir.glob(ext)
-        )
-        # Also check subdirectories
-        artifacts.extend(
             str(p.relative_to(OUTPUT_DIR)) for p in job_output_dir.rglob(ext)
-            if str(p.relative_to(OUTPUT_DIR)) not in artifacts
         )
     # Also check if the script saved files in the cwd
     for ext in ("*.png", "*.gif", "*.mp4", "*.jpg", "*.svg"):
@@ -179,19 +162,15 @@ def _run_demo(job_id, demo_script, extra_args=None):
 
 
 # ---------------------------------------------------------------------------
-# Routes – pages
+# Routes
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index():
     return render_template("index.html")
 
 
-# ---------------------------------------------------------------------------
-# Routes – API
-# ---------------------------------------------------------------------------
 @app.route("/api/demos", methods=["GET"])
 def list_demos():
-    """Return available demo configurations."""
     demos = [
         {
             "id": "vandenberg",
@@ -222,7 +201,6 @@ def list_demos():
 
 @app.route("/api/run", methods=["POST"])
 def run_demo():
-    """Start a demo job asynchronously."""
     body = request.get_json(force=True)
     demo_id = body.get("demo_id")
     if demo_id not in ("vandenberg", "korea"):
@@ -231,7 +209,7 @@ def run_demo():
     script = VANDENBERG_SCRIPT if demo_id == "vandenberg" else LIVE_SCRIPT
     if not script:
         return jsonify({
-            "error": "Demo script not found in missile-tid directory. Check /api/health for details.",
+            "error": "Demo script not found in missile-tid directory.",
             "job_id": "error",
             "status": "failed"
         }), 500
@@ -241,13 +219,13 @@ def run_demo():
     job_output_dir.mkdir(exist_ok=True)
     abs_output_dir = str(job_output_dir.resolve())
 
-    # Build arguments based on which demo is selected
-    # live.py expects: output_folder [hours_to_run]
-    # vandenburg.py may also expect: output_folder
-    if demo_id == "korea":
-        extra_args = [abs_output_dir, "1"]
+    # Each demo script has different argument formats:
+    # vandenberg.py uses: -o OUTPUT_PATH [-v]
+    # live.py uses: output_folder [hours_to_run]
+    if demo_id == "vandenberg":
+        extra_args = ["-o", abs_output_dir]
     else:
-        extra_args = [abs_output_dir]
+        extra_args = [abs_output_dir, "1"]
 
     jobs[job_id] = {
         "job_id": job_id,
@@ -267,14 +245,12 @@ def run_demo():
 
 @app.route("/api/jobs", methods=["GET"])
 def list_jobs():
-    """List all jobs (most recent first)."""
     ordered = sorted(jobs.values(), key=lambda j: j["created_at"], reverse=True)
     return jsonify(ordered)
 
 
 @app.route("/api/jobs/<job_id>", methods=["GET"])
 def get_job(job_id):
-    """Return details of a single job."""
     job = jobs.get(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
@@ -283,7 +259,6 @@ def get_job(job_id):
 
 @app.route("/api/artifacts/<path:filepath>")
 def serve_artifact(filepath):
-    """Serve a generated artifact (image, animation, etc.)."""
     return send_from_directory(OUTPUT_DIR, filepath)
 
 
@@ -299,9 +274,6 @@ def health():
     })
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"

@@ -43,6 +43,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Locate demo scripts dynamically
+# ---------------------------------------------------------------------------
+def find_demo_script(name):
+    """Search for a demo script by name under missile-tid/."""
+    for root, dirs, files in os.walk("missile-tid"):
+        if name in files:
+            return os.path.join(root, name)
+    return None
+
+VANDENBERG_SCRIPT = find_demo_script("vandenburg.py")
+LIVE_SCRIPT = find_demo_script("live.py")
+
+logger.info("Vandenberg script found at: %s", VANDENBERG_SCRIPT)
+logger.info("Live script found at: %s", LIVE_SCRIPT)
+
+# ---------------------------------------------------------------------------
 # In-memory job tracker  (swap for Redis/DB in production)
 # ---------------------------------------------------------------------------
 jobs = {}
@@ -113,7 +129,7 @@ def list_demos():
                 "on 12 June 2019.  Produces an animation of the traveling "
                 "ionospheric disturbance."
             ),
-            "script": "missile-tid/demos/vandenburg.py",
+            "script": VANDENBERG_SCRIPT or "not found",
             "type": "replay",
         },
         {
@@ -123,7 +139,7 @@ def list_demos():
                 "Monitors GNSS data near the Korean peninsula for potential "
                 "ballistic missile launches in near-real-time."
             ),
-            "script": "missile-tid/demos/live.py",
+            "script": LIVE_SCRIPT or "not found",
             "type": "live",
         },
     ]
@@ -138,7 +154,10 @@ def run_demo():
     if demo_id not in ("vandenberg", "korea"):
         return jsonify({"error": "Unknown demo_id"}), 400
 
-    script = "missile-tid/demos/vandenburg.py" if demo_id == "vandenberg" else "missile-tid/demos/live.py"
+    script = VANDENBERG_SCRIPT if demo_id == "vandenberg" else LIVE_SCRIPT
+    if not script:
+        return jsonify({"error": "Demo script not found in missile-tid directory"}), 500
+
     job_id = str(uuid.uuid4())[:8]
     jobs[job_id] = {
         "job_id": job_id,

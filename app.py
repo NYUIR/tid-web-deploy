@@ -11,6 +11,7 @@ import logging
 import threading
 import subprocess
 import uuid
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -50,36 +51,46 @@ def find_file(name, search_root="missile-tid"):
             return os.path.join(root, name)
     return None
 
-def find_dir(name, search_root="missile-tid"):
-    """Search for a directory by name under a root directory."""
-    for root, dirs, files in os.walk(search_root):
-        if name in dirs:
-            return os.path.join(root, name)
+def find_any_file(names, search_root="missile-tid"):
+    """Search for any of the given filenames, return first match."""
+    for name in names:
+        result = find_file(name, search_root)
+        if result:
+            return result
     return None
 
-# Log the full directory tree at startup for debugging
-def log_tree(path, prefix="", max_depth=3, current_depth=0):
-    if current_depth >= max_depth:
-        return
-    try:
-        entries = sorted(os.listdir(path))
-    except PermissionError:
-        return
-    for entry in entries:
-        full = os.path.join(path, entry)
-        logger.info("%s%s%s", prefix, entry, "/" if os.path.isdir(full) else "")
-        if os.path.isdir(full):
-            log_tree(full, prefix + "  ", max_depth, current_depth + 1)
+def find_all_files(search_root="missile-tid"):
+    """List all .py files for debugging."""
+    py_files = []
+    for root, dirs, files in os.walk(search_root):
+        for f in files:
+            if f.endswith(".py"):
+                py_files.append(os.path.join(root, f))
+    return py_files
 
-logger.info("=== missile-tid directory contents ===")
-log_tree("missile-tid", max_depth=3)
-logger.info("=== end directory listing ===")
+# Log all Python files at startup for debugging
+logger.info("=== All .py files in missile-tid ===")
+for f in find_all_files():
+    logger.info("  %s", f)
+logger.info("=== end ===")
 
-VANDENBERG_SCRIPT = find_file("vandenburg.py")
-LIVE_SCRIPT = find_file("live.py")
+# Search for Vandenberg script with multiple possible spellings
+VANDENBERG_SCRIPT = find_any_file([
+    "vandenburg.py",
+    "vandenberg.py",
+    "Vandenburg.py",
+    "Vandenberg.py",
+    "vandenburg_demo.py",
+    "vandenberg_demo.py",
+])
 
-# Also find the missile-tid root that contains the actual code
-# (handles nested folders like missile-tid/missile-tid-main/)
+LIVE_SCRIPT = find_any_file([
+    "live.py",
+    "Live.py",
+    "live_demo.py",
+])
+
+# Find the missile-tid root (the dir that contains requirements.txt)
 MISSILE_TID_ROOT = None
 req_file = find_file("requirements.txt", "missile-tid")
 if req_file:
@@ -102,7 +113,6 @@ def _run_demo(job_id, demo_script, extra_args=None):
 
     # Use the missile-tid root as the working directory so imports work
     cwd = MISSILE_TID_ROOT or os.path.dirname(demo_script) or "."
-    # Convert script path to absolute so it works with any cwd
     abs_script = os.path.abspath(demo_script)
 
     cmd = ["python", abs_script] + (extra_args or [])
@@ -110,6 +120,7 @@ def _run_demo(job_id, demo_script, extra_args=None):
 
     job_output_dir = OUTPUT_DIR / job_id
     job_output_dir.mkdir(exist_ok=True)
+    abs_output_dir = str(job_output_dir.resolve())
 
     try:
         result = subprocess.run(
@@ -120,8 +131,8 @@ def _run_demo(job_id, demo_script, extra_args=None):
             cwd=cwd,
             env={
                 **os.environ,
-                "TID_OUTPUT_DIR": str(job_output_dir.resolve()),
-                "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
+                "TID_OUTPUT_DIR": abs_output_dir,
+                "PYTHONPATH": cwd + ":" + os.environ.get("PYTHONPATH", ""),
             },
         )
         jobs[job_id]["stdout"] = result.stdout[-5000:]
@@ -144,14 +155,17 @@ def _run_demo(job_id, demo_script, extra_args=None):
         artifacts.extend(
             str(p.relative_to(OUTPUT_DIR)) for p in job_output_dir.glob(ext)
         )
+        # Also check subdirectories
+        artifacts.extend(
+            str(p.relative_to(OUTPUT_DIR)) for p in job_output_dir.rglob(ext)
+            if str(p.relative_to(OUTPUT_DIR)) not in artifacts
+        )
     # Also check if the script saved files in the cwd
     for ext in ("*.png", "*.gif", "*.mp4", "*.jpg", "*.svg"):
         for p in Path(cwd).glob(ext):
-            # Copy to our output dir so we can serve it
             dest = job_output_dir / p.name
             if not dest.exists():
                 try:
-                    import shutil
                     shutil.copy2(str(p), str(dest))
                     artifacts.append(str(dest.relative_to(OUTPUT_DIR)))
                 except Exception:
@@ -184,7 +198,7 @@ def list_demos():
             "name": "Vandenberg Falcon 9 Detection",
             "description": (
                 "Replay detection of a Falcon 9 launch from Vandenberg SFB, CA "
-                "on 12 June 2019.  Produces an animation of the traveling "
+                "on 12 June 2019. Produces an animation of the traveling "
                 "ionospheric disturbance."
             ),
             "script": VANDENBERG_SCRIPT or "NOT FOUND",
@@ -217,12 +231,24 @@ def run_demo():
     script = VANDENBERG_SCRIPT if demo_id == "vandenberg" else LIVE_SCRIPT
     if not script:
         return jsonify({
-            "error": "Demo script not found in missile-tid directory",
+            "error": "Demo script not found in missile-tid directory. Check /api/health for details.",
             "job_id": "error",
             "status": "failed"
         }), 500
 
     job_id = str(uuid.uuid4())[:8]
+    job_output_dir = OUTPUT_DIR / job_id
+    job_output_dir.mkdir(exist_ok=True)
+    abs_output_dir = str(job_output_dir.resolve())
+
+    # Build arguments based on which demo is selected
+    # live.py expects: output_folder [hours_to_run]
+    # vandenburg.py may also expect: output_folder
+    if demo_id == "korea":
+        extra_args = [abs_output_dir, "1"]
+    else:
+        extra_args = [abs_output_dir]
+
     jobs[job_id] = {
         "job_id": job_id,
         "demo_id": demo_id,
@@ -233,7 +259,7 @@ def run_demo():
         "artifacts": [],
     }
 
-    thread = threading.Thread(target=_run_demo, args=(job_id, script), daemon=True)
+    thread = threading.Thread(target=_run_demo, args=(job_id, script, extra_args), daemon=True)
     thread.start()
 
     return jsonify({"job_id": job_id, "status": "queued"}), 202
@@ -269,6 +295,7 @@ def health():
         "vandenberg_script": VANDENBERG_SCRIPT,
         "live_script": LIVE_SCRIPT,
         "missile_tid_root": MISSILE_TID_ROOT,
+        "all_py_files": find_all_files(),
     })
 
 

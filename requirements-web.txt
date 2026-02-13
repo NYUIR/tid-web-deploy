@@ -1,0 +1,3 @@
+# Web deployment layer — installed ON TOP of the original missile-tid requirements
+Flask==3.0.0
+gunicorn==21.2.0

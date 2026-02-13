@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — Missile TID Web Deployment
+# Usage:  docker compose up --build
+# ─────────────────────────────────────────────────────────────────────────────
+version: "3.9"
+
+services:
+  tid-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tid-web
+    ports:
+      - "${PORT:-5000}:5000"
+    environment:
+      - FLASK_DEBUG=${FLASK_DEBUG:-0}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - JOB_TIMEOUT=${JOB_TIMEOUT:-600}
+    volumes:
+      # Persist generated output between container restarts
+      - tid-output:/app/output
+      - tid-logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  tid-output:
+  tid-logs:

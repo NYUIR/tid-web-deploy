@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 jobs: dict = {}
 
 
-def _run_demo(job_id: str, demo_script: str, extra_args: list[str] | None = None):
+def _run_demo(job_id, demo_script, extra_args=None):
     """Execute a TID demo script in a subprocess and capture output."""
     jobs[job_id]["status"] = "running"
     jobs[job_id]["started_at"] = datetime.utcnow().isoformat()

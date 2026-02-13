@@ -43,7 +43,6 @@ RUN pip install --no-cache-dir -r /app/requirements-web.txt
 
 COPY app.py          /app/
 COPY templates/      /app/templates/
-COPY static/         /app/static/
 
 # Create working directories
 RUN mkdir -p /app/output /app/logs

@@ -20,7 +20,15 @@ RUN ln -sf /usr/bin/python3 /usr/bin/python
 WORKDIR /app
 
 # Copy the Middlebury TID repo
-COPY missile-tid/ /app/missile-tid/
+COPY missile-tid/ /app/missile-tid-raw/
+
+# Flatten: if there is a single nested subfolder, move its contents up
+RUN if [ $(ls -d /app/missile-tid-raw/*/ 2>/dev/null | wc -l) -eq 1 ] && \
+       [ ! -f /app/missile-tid-raw/requirements.txt ]; then \
+        mv /app/missile-tid-raw/*/* /app/missile-tid-raw/ 2>/dev/null; \
+        mv /app/missile-tid-raw/*/.[!.]* /app/missile-tid-raw/ 2>/dev/null; \
+    fi && \
+    mv /app/missile-tid-raw /app/missile-tid
 
 # Install pycurl separately with the correct SSL backend
 RUN pip install --no-cache-dir pycurl --global-option="--with-openssl"

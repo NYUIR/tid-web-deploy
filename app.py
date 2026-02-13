@@ -5,20 +5,18 @@ Wraps the existing command-line demos into a browser-accessible dashboard.
 """
 
 import os
-import io
 import json
 import glob
-import base64
 import logging
 import threading
 import subprocess
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from flask import (
     Flask, render_template, jsonify, request,
-    send_from_directory, Response
+    send_from_directory
 )
 
 # ---------------------------------------------------------------------------
@@ -45,21 +43,54 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Locate demo scripts dynamically
 # ---------------------------------------------------------------------------
-def find_demo_script(name):
-    """Search for a demo script by name under missile-tid/."""
-    for root, dirs, files in os.walk("missile-tid"):
+def find_file(name, search_root="missile-tid"):
+    """Search for a file by name under a root directory."""
+    for root, dirs, files in os.walk(search_root):
         if name in files:
             return os.path.join(root, name)
     return None
 
-VANDENBERG_SCRIPT = find_demo_script("vandenburg.py")
-LIVE_SCRIPT = find_demo_script("live.py")
+def find_dir(name, search_root="missile-tid"):
+    """Search for a directory by name under a root directory."""
+    for root, dirs, files in os.walk(search_root):
+        if name in dirs:
+            return os.path.join(root, name)
+    return None
 
-logger.info("Vandenberg script found at: %s", VANDENBERG_SCRIPT)
-logger.info("Live script found at: %s", LIVE_SCRIPT)
+# Log the full directory tree at startup for debugging
+def log_tree(path, prefix="", max_depth=3, current_depth=0):
+    if current_depth >= max_depth:
+        return
+    try:
+        entries = sorted(os.listdir(path))
+    except PermissionError:
+        return
+    for entry in entries:
+        full = os.path.join(path, entry)
+        logger.info("%s%s%s", prefix, entry, "/" if os.path.isdir(full) else "")
+        if os.path.isdir(full):
+            log_tree(full, prefix + "  ", max_depth, current_depth + 1)
+
+logger.info("=== missile-tid directory contents ===")
+log_tree("missile-tid", max_depth=3)
+logger.info("=== end directory listing ===")
+
+VANDENBERG_SCRIPT = find_file("vandenburg.py")
+LIVE_SCRIPT = find_file("live.py")
+
+# Also find the missile-tid root that contains the actual code
+# (handles nested folders like missile-tid/missile-tid-main/)
+MISSILE_TID_ROOT = None
+req_file = find_file("requirements.txt", "missile-tid")
+if req_file:
+    MISSILE_TID_ROOT = os.path.dirname(req_file)
+
+logger.info("Vandenberg script: %s", VANDENBERG_SCRIPT)
+logger.info("Live script: %s", LIVE_SCRIPT)
+logger.info("Missile-TID root: %s", MISSILE_TID_ROOT)
 
 # ---------------------------------------------------------------------------
-# In-memory job tracker  (swap for Redis/DB in production)
+# In-memory job tracker
 # ---------------------------------------------------------------------------
 jobs = {}
 
@@ -69,8 +100,13 @@ def _run_demo(job_id, demo_script, extra_args=None):
     jobs[job_id]["status"] = "running"
     jobs[job_id]["started_at"] = datetime.utcnow().isoformat()
 
-    cmd = ["python", demo_script] + (extra_args or [])
-    logger.info("Starting job %s: %s", job_id, " ".join(cmd))
+    # Use the missile-tid root as the working directory so imports work
+    cwd = MISSILE_TID_ROOT or os.path.dirname(demo_script) or "."
+    # Convert script path to absolute so it works with any cwd
+    abs_script = os.path.abspath(demo_script)
+
+    cmd = ["python", abs_script] + (extra_args or [])
+    logger.info("Starting job %s: %s (cwd=%s)", job_id, " ".join(cmd), cwd)
 
     job_output_dir = OUTPUT_DIR / job_id
     job_output_dir.mkdir(exist_ok=True)
@@ -81,9 +117,14 @@ def _run_demo(job_id, demo_script, extra_args=None):
             capture_output=True,
             text=True,
             timeout=int(os.environ.get("JOB_TIMEOUT", 600)),
-            env={**os.environ, "TID_OUTPUT_DIR": str(job_output_dir)},
+            cwd=cwd,
+            env={
+                **os.environ,
+                "TID_OUTPUT_DIR": str(job_output_dir.resolve()),
+                "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
+            },
         )
-        jobs[job_id]["stdout"] = result.stdout[-5000:]  # keep tail
+        jobs[job_id]["stdout"] = result.stdout[-5000:]
         jobs[job_id]["stderr"] = result.stderr[-5000:]
         jobs[job_id]["returncode"] = result.returncode
         jobs[job_id]["status"] = "completed" if result.returncode == 0 else "failed"
@@ -96,14 +137,31 @@ def _run_demo(job_id, demo_script, extra_args=None):
     finally:
         jobs[job_id]["finished_at"] = datetime.utcnow().isoformat()
 
-    # Collect any generated images / animations
+    # Search broadly for generated output files
     artifacts = []
-    for ext in ("*.png", "*.gif", "*.mp4", "*.html"):
+    # Check our designated output dir
+    for ext in ("*.png", "*.gif", "*.mp4", "*.html", "*.jpg", "*.svg"):
         artifacts.extend(
             str(p.relative_to(OUTPUT_DIR)) for p in job_output_dir.glob(ext)
         )
+    # Also check if the script saved files in the cwd
+    for ext in ("*.png", "*.gif", "*.mp4", "*.jpg", "*.svg"):
+        for p in Path(cwd).glob(ext):
+            # Copy to our output dir so we can serve it
+            dest = job_output_dir / p.name
+            if not dest.exists():
+                try:
+                    import shutil
+                    shutil.copy2(str(p), str(dest))
+                    artifacts.append(str(dest.relative_to(OUTPUT_DIR)))
+                except Exception:
+                    pass
+
     jobs[job_id]["artifacts"] = artifacts
-    logger.info("Job %s finished: %s (%d artifacts)", job_id, jobs[job_id]["status"], len(artifacts))
+    logger.info(
+        "Job %s finished: %s (%d artifacts)",
+        job_id, jobs[job_id]["status"], len(artifacts)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +187,8 @@ def list_demos():
                 "on 12 June 2019.  Produces an animation of the traveling "
                 "ionospheric disturbance."
             ),
-            "script": VANDENBERG_SCRIPT or "not found",
+            "script": VANDENBERG_SCRIPT or "NOT FOUND",
+            "available": VANDENBERG_SCRIPT is not None,
             "type": "replay",
         },
         {
@@ -139,7 +198,8 @@ def list_demos():
                 "Monitors GNSS data near the Korean peninsula for potential "
                 "ballistic missile launches in near-real-time."
             ),
-            "script": LIVE_SCRIPT or "not found",
+            "script": LIVE_SCRIPT or "NOT FOUND",
+            "available": LIVE_SCRIPT is not None,
             "type": "live",
         },
     ]
@@ -156,7 +216,11 @@ def run_demo():
 
     script = VANDENBERG_SCRIPT if demo_id == "vandenberg" else LIVE_SCRIPT
     if not script:
-        return jsonify({"error": "Demo script not found in missile-tid directory"}), 500
+        return jsonify({
+            "error": "Demo script not found in missile-tid directory",
+            "job_id": "error",
+            "status": "failed"
+        }), 500
 
     job_id = str(uuid.uuid4())[:8]
     jobs[job_id] = {
@@ -199,7 +263,13 @@ def serve_artifact(filepath):
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat()})
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "vandenberg_script": VANDENBERG_SCRIPT,
+        "live_script": LIVE_SCRIPT,
+        "missile_tid_root": MISSILE_TID_ROOT,
+    })
 
 
 # ---------------------------------------------------------------------------

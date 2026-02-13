@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TID Detection Dashboard — Missile TID</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── CSS Variables ─────────────────────────────────────────────── */
+    :root {
+      --bg-deep:       #06090f;
+      --bg-panel:      #0c1220;
+      --bg-card:       #111a2e;
+      --bg-card-hover: #162240;
+      --border:        #1c2a48;
+      --border-glow:   #2d5bff30;
+      --accent:        #3b82f6;
+      --accent-bright: #60a5fa;
+      --accent-dim:    #1d4ed8;
+      --success:       #22c55e;
+      --warning:       #f59e0b;
+      --danger:        #ef4444;
+      --text:          #e2e8f0;
+      --text-dim:      #94a3b8;
+      --text-faint:    #475569;
+      --mono:          'JetBrains Mono', monospace;
+      --sans:          'DM Sans', sans-serif;
+    }
+
+    /* ── Reset / Base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg-deep);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Animated background grid ──────────────────────────────────── */
+    body::before {
+      content: "";
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.15;
+      animation: gridDrift 40s linear infinite;
+    }
+    @keyframes gridDrift {
+      to { background-position: 60px 60px; }
+    }
+
+    /* ── Scanline overlay ──────────────────────────────────────────── */
+    body::after {
+      content: "";
+      position: fixed; inset: 0; z-index: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.04) 2px,
+        rgba(0,0,0,0.04) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────── */
+    .app { position: relative; z-index: 1; }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+    }
+    .topbar-logo {
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    .topbar-logo svg { width: 28px; height: 28px; }
+    .topbar-logo h1 {
+      font-family: var(--mono);
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, var(--accent-bright), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .topbar-meta {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      display: flex; gap: 1.5rem;
+    }
+    .topbar-meta .pulse {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      margin-right: 6px;
+      animation: pulse 2s ease-in-out infinite;
+      vertical-align: middle;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+      50%       { opacity: 0.6; box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+    }
+
+    .main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* ── Section Header ────────────────────────────────────────────── */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+    .section-desc {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      max-width: 680px;
+      margin-bottom: 2rem;
+    }
+
+    /* ── Demo Cards ────────────────────────────────────────────────── */
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 2.5rem; }
+    @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.3s, box-shadow 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: "";
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent);
+      box-shadow: 0 0 30px var(--border-glow);
+    }
+    .card:hover::before { opacity: 1; }
+    .card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 30px var(--border-glow), inset 0 0 40px rgba(59,130,246,0.04);
+    }
+    .card.selected::before { opacity: 1; }
+
+    .card-badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      padding: 3px 8px;
+      border-radius: 4px;
+      margin-bottom: 0.75rem;
+    }
+    .badge-replay { background: #1e3a5f; color: var(--accent-bright); }
+    .badge-live   { background: #1a3329; color: var(--success); }
+
+    .card h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .card p {
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      line-height: 1.55;
+    }
+
+    .card-check {
+      position: absolute; top: 1rem; right: 1rem;
+      width: 22px; height: 22px;
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .card.selected .card-check {
+      border-color: var(--accent);
+      background: var(--accent);
+    }
+    .card.selected .card-check svg { opacity: 1; }
+    .card-check svg { opacity: 0; transition: opacity 0.2s; }
+
+    /* ── Run Button ────────────────────────────────────────────────── */
+    .run-btn {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      padding: 0.75rem 2rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent-dim), var(--accent));
+      color: #fff;
+      transition: transform 0.15s, box-shadow 0.25s;
+      box-shadow: 0 4px 20px rgba(59,130,246,0.25);
+    }
+    .run-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(59,130,246,0.4);
+    }
+    .run-btn:active { transform: translateY(0); }
+    .run-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* ── Jobs / Output Panel ───────────────────────────────────────── */
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-top: 2rem;
+    }
+    .panel-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel-header h2 {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--text-dim);
+    }
+
+    .job-row {
+      display: grid;
+      grid-template-columns: 80px 1fr 120px 100px;
+      align-items: center;
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+      transition: background 0.15s;
+    }
+    .job-row:last-child { border-bottom: none; }
+    .job-row:hover { background: var(--bg-card); }
+
+    .job-id {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--accent-bright);
+    }
+    .job-demo { color: var(--text); font-weight: 500; }
+    .job-time { font-family: var(--mono); font-size: 0.7rem; color: var(--text-faint); }
+
+    .status-chip {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 3px 10px;
+      border-radius: 20px;
+      text-align: center;
+      width: fit-content;
+    }
+    .status-queued    { background: #1e293b; color: var(--text-dim); }
+    .status-running   { background: #172554; color: var(--accent-bright); animation: pulse 2s infinite; }
+    .status-completed { background: #14532d; color: var(--success); }
+    .status-failed    { background: #450a0a; color: var(--danger); }
+    .status-timeout   { background: #451a03; color: var(--warning); }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-faint);
+      font-size: 0.85rem;
+    }
+    .empty-state svg { margin-bottom: 0.75rem; opacity: 0.3; }
+
+    /* ── Artifact viewer ───────────────────────────────────────────── */
+    .artifact-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      padding: 1.25rem;
+    }
+    .artifact-thumb {
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--bg-deep);
+    }
+    .artifact-thumb img,
+    .artifact-thumb video {
+      width: 100%;
+      display: block;
+    }
+    .artifact-name {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      padding: 0.5rem 0.75rem;
+      color: var(--text-dim);
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Console Log ───────────────────────────────────────────────── */
+    .console {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      line-height: 1.7;
+      color: var(--text-dim);
+      padding: 1rem 1.25rem;
+      max-height: 260px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      background: var(--bg-deep);
+    }
+
+    /* ── Footer ────────────────────────────────────────────────────── */
+    .footer {
+      text-align: center;
+      padding: 2rem 1rem;
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      font-family: var(--mono);
+    }
+
+    /* ── Animations ────────────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up {
+      animation: fadeUp 0.5s ease-out both;
+    }
+    .delay-1 { animation-delay: 0.1s; }
+    .delay-2 { animation-delay: 0.2s; }
+    .delay-3 { animation-delay: 0.3s; }
+
+    /* ── Tabs ──────────────────────────────────────────────────────── */
+    .tab-bar {
+      display: flex; gap: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.7rem 1.25rem;
+      background: none;
+      border: none;
+      color: var(--text-faint);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .tab-btn:hover { color: var(--text-dim); }
+    .tab-btn.active {
+      color: var(--accent-bright);
+      border-bottom-color: var(--accent);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+  </style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ─── Top Bar ──────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="14" cy="14" r="13" stroke="#3b82f6" stroke-width="1.5" opacity="0.4"/>
+        <circle cx="14" cy="14" r="8" stroke="#3b82f6" stroke-width="1.2" opacity="0.6"/>
+        <circle cx="14" cy="14" r="3" fill="#3b82f6"/>
+        <line x1="14" y1="1" x2="14" y2="27" stroke="#3b82f6" stroke-width="0.5" opacity="0.3"/>
+        <line x1="1" y1="14" x2="27" y2="14" stroke="#3b82f6" stroke-width="0.5" opacity="0.3"/>
+      </svg>
+      <h1>Missile TID</h1>
+    </div>
+    <div class="topbar-meta">
+      <span><span class="pulse"></span>System Ready</span>
+      <span id="clock"></span>
+    </div>
+  </header>
+
+  <!-- ─── Main ─────────────────────────────────────────────────────── -->
+  <main class="main">
+
+    <div class="fade-up">
+      <div class="section-label">Detection Demos</div>
+      <div class="section-title">Traveling Ionospheric Disturbance Analysis</div>
+      <p class="section-desc">
+        Select a demo scenario below and click <strong>Run Detection</strong> to
+        launch the analysis.  Results — including animations of ionospheric
+        perturbations — will appear in the output panel once processing completes.
+      </p>
+    </div>
+
+    <!-- ─── Demo Cards ─────────────────────────────────────────────── -->
+    <div class="cards fade-up delay-1">
+      <div class="card" data-demo="vandenberg" onclick="selectDemo(this)">
+        <span class="card-badge badge-replay">Replay</span>
+        <div class="card-check">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h3>Vandenberg — Falcon 9 Launch</h3>
+        <p>
+          Replay the detection of a SpaceX Falcon 9 launch from Vandenberg SFB,
+          California on 12 June 2019.  The tool produces an animation of the
+          TID signature propagating through the ionosphere above the launch site.
+        </p>
+      </div>
+      <div class="card" data-demo="korea" onclick="selectDemo(this)">
+        <span class="card-badge badge-live">Live Monitor</span>
+        <div class="card-check">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h3>Korean Peninsula Monitor</h3>
+        <p>
+          Monitors GNSS receiver data around the Korean peninsula for potential
+          ballistic missile launches.  Runs in near-real-time and surfaces TID
+          anomalies as they are detected.
+        </p>
+      </div>
+    </div>
+
+    <div class="fade-up delay-2" style="display:flex;align-items:center;gap:1rem;">
+      <button class="run-btn" id="runBtn" disabled onclick="runDemo()">Run Detection</button>
+      <span id="runHint" style="font-size:0.78rem;color:var(--text-faint);">Select a demo first</span>
+    </div>
+
+    <!-- ─── Output Panel ───────────────────────────────────────────── -->
+    <div class="panel fade-up delay-3">
+      <div class="panel-header">
+        <h2>Job Output</h2>
+        <button onclick="refreshJobs()" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 10px;border-radius:5px;font-family:var(--mono);font-size:0.65rem;cursor:pointer;letter-spacing:0.08em;text-transform:uppercase;">Refresh</button>
+      </div>
+      <div class="tab-bar" id="tabBar" style="display:none;">
+        <button class="tab-btn active" onclick="switchTab('artifacts',this)">Artifacts</button>
+        <button class="tab-btn" onclick="switchTab('console',this)">Console</button>
+      </div>
+      <div class="tab-content active" id="tab-artifacts">
+        <div id="artifactGrid" class="artifact-grid" style="display:none;"></div>
+      </div>
+      <div class="tab-content" id="tab-console">
+        <div id="consoleLog" class="console" style="display:none;"></div>
+      </div>
+      <!-- Job list -->
+      <div id="jobList"></div>
+      <div class="empty-state" id="emptyState">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <circle cx="20" cy="20" r="18" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M14 20h12M20 14v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <p>No jobs yet — select a demo and click Run to start.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    Middlebury Missile TID · Web Deployment Wrapper · NYU International Relations
+  </footer>
+</div>
+
+<script>
+  // ── Clock ────────────────────────────────────────────────────────
+  function tick() {
+    const d = new Date();
+    document.getElementById("clock").textContent =
+      d.toISOString().replace("T"," ").slice(0,19) + " UTC";
+  }
+  tick(); setInterval(tick, 1000);
+
+  // ── Demo selection ───────────────────────────────────────────────
+  let selectedDemo = null;
+
+  function selectDemo(el) {
+    document.querySelectorAll(".card").forEach(c => c.classList.remove("selected"));
+    el.classList.add("selected");
+    selectedDemo = el.dataset.demo;
+    document.getElementById("runBtn").disabled = false;
+    document.getElementById("runHint").textContent = selectedDemo === "vandenberg"
+      ? "Vandenberg Falcon 9 replay selected"
+      : "Korean peninsula monitor selected";
+  }
+
+  // ── Run demo ─────────────────────────────────────────────────────
+  let activeJobId = null;
+
+  async function runDemo() {
+    if (!selectedDemo) return;
+    const btn = document.getElementById("runBtn");
+    btn.disabled = true;
+    btn.textContent = "Submitting…";
+
+    try {
+      const res = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ demo_id: selectedDemo }),
+      });
+      const data = await res.json();
+      activeJobId = data.job_id;
+      pollJob(activeJobId);
+    } catch (e) {
+      console.error(e);
+      btn.textContent = "Run Detection";
+      btn.disabled = false;
+    }
+  }
+
+  // ── Poll job status ──────────────────────────────────────────────
+  async function pollJob(jobId) {
+    const btn = document.getElementById("runBtn");
+    btn.textContent = "Processing…";
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`);
+        const job = await res.json();
+        renderSingleJob(job);
+        if (job.status === "queued" || job.status === "running") {
+          setTimeout(poll, 2000);
+        } else {
+          btn.textContent = "Run Detection";
+          btn.disabled = false;
+        }
+      } catch {
+        btn.textContent = "Run Detection";
+        btn.disabled = false;
+      }
+    };
+    poll();
+  }
+
+  // ── Render helpers ───────────────────────────────────────────────
+  function renderSingleJob(job) {
+    document.getElementById("emptyState").style.display = "none";
+    const tabBar = document.getElementById("tabBar");
+    tabBar.style.display = "flex";
+
+    // Job list
+    const list = document.getElementById("jobList");
+    list.innerHTML = "";
+    const row = document.createElement("div");
+    row.className = "job-row";
+    row.innerHTML = `
+      <span class="job-id">${job.job_id}</span>
+      <span class="job-demo">${job.demo_id === "vandenberg" ? "Vandenberg Falcon 9" : "Korean Peninsula"}</span>
+      <span class="job-time">${job.created_at?.slice(11,19) || ""}</span>
+      <span class="status-chip status-${job.status}">${job.status}</span>
+    `;
+    list.appendChild(row);
+
+    // Console
+    const consoleEl = document.getElementById("consoleLog");
+    consoleEl.style.display = "block";
+    consoleEl.textContent = (job.stdout || "") + (job.stderr ? "\n--- STDERR ---\n" + job.stderr : "");
+
+    // Artifacts
+    const grid = document.getElementById("artifactGrid");
+    if (job.artifacts && job.artifacts.length) {
+      grid.style.display = "grid";
+      grid.innerHTML = job.artifacts.map(a => {
+        const ext = a.split(".").pop().toLowerCase();
+        const isVideo = ext === "mp4" || ext === "gif";
+        return `<div class="artifact-thumb">
+          ${isVideo
+            ? `<video src="/api/artifacts/${a}" controls autoplay loop muted></video>`
+            : `<img src="/api/artifacts/${a}" alt="${a}" />`}
+          <div class="artifact-name">${a.split("/").pop()}</div>
+        </div>`;
+      }).join("");
+    } else {
+      grid.style.display = "none";
+    }
+  }
+
+  async function refreshJobs() {
+    if (activeJobId) {
+      const res = await fetch(`/api/jobs/${activeJobId}`);
+      const job = await res.json();
+      renderSingleJob(job);
+    }
+  }
+
+  function switchTab(name, btn) {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+    document.getElementById(`tab-${name}`).classList.add("active");
+  }
+</script>
+
+</body>
+</html>

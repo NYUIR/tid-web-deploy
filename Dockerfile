@@ -27,12 +27,23 @@ RUN pip install --no-cache-dir pycurl --global-option="--with-openssl"
 
 # Install remaining requirements (skip pycurl since it's already installed)
 RUN sed '/pycurl/d' /app/missile-tid/requirements.txt > /tmp/requirements-filtered.txt \
-    && pip install --no-cache-dir -r /tmp/requirements-filtered.txt \
-    && pip install --no-cache-dir -e /app/missile-tid/
+    && pip install --no-cache-dir -r /tmp/requirements-filtered.txt
 
-# Copy the example config
-RUN cp /app/missile-tid/config/configuration.yml.example \
-       /app/missile-tid/config/configuration.yml
+# Install missile-tid as a package only if setup.py or pyproject.toml exists
+RUN if [ -f /app/missile-tid/setup.py ]; then \
+        pip install --no-cache-dir -e /app/missile-tid/; \
+    elif [ -f /app/missile-tid/pyproject.toml ]; then \
+        pip install --no-cache-dir -e /app/missile-tid/; \
+    fi
+
+# Add missile-tid to Python path so its modules are importable regardless
+ENV PYTHONPATH="/app/missile-tid:${PYTHONPATH}"
+
+# Copy the example config if it exists
+RUN if [ -f /app/missile-tid/config/configuration.yml.example ]; then \
+        cp /app/missile-tid/config/configuration.yml.example \
+           /app/missile-tid/config/configuration.yml; \
+    fi
 
 # Install web layer
 COPY requirements-web.txt /app/

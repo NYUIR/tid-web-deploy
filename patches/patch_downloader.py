@@ -16,6 +16,16 @@ def patch(source: str) -> str:
     patched = source
 
     # ──────────────────────────────────────────────────────────────
+    # PATCH 0: Ensure 'import logging' exists in the file
+    # Just prepend it — Python handles duplicate imports fine
+    # ──────────────────────────────────────────────────────────────
+    if 'import logging' not in patched:
+        patched = 'import logging\n' + patched
+        print("  [0/4] Added 'import logging' at top of file")
+    else:
+        print("  [0/4] 'import logging' already present")
+
+    # ──────────────────────────────────────────────────────────────
     # PATCH 1: Add CDDIS_OBS_BASE_URL constant
     # Insert after the last CDDIS_*_BASE_URL line
     # ──────────────────────────────────────────────────────────────
@@ -33,9 +43,9 @@ def patch(source: str) -> str:
                 '"https://cddis.nasa.gov/archive/gnss/data/daily/")\n'
             )
             patched = patched[:insert_pos] + new_const + patched[insert_pos:]
-            print("  [1/3] Added CDDIS_OBS_BASE_URL constant")
+            print("  [1/4] Added CDDIS_OBS_BASE_URL constant")
         else:
-            print("  [1/3] WARNING: Could not find CDDIS_*_BASE_URL lines to anchor insertion")
+            print("  [1/4] WARNING: Could not find CDDIS_*_BASE_URL lines to anchor insertion")
 
     # ──────────────────────────────────────────────────────────────
     # PATCH 2: Add .netrc and cookie support in https_download_file
@@ -55,9 +65,9 @@ def patch(source: str) -> str:
                 '  crl.setopt(crl.COOKIEFILE, \'/tmp/cddis_cookies\')  # read cookies for OAuth redirects'
             )
             patched = patched[:insert_pos] + netrc_lines + patched[insert_pos:]
-            print("  [2/3] Added .netrc authentication to https_download_file()")
+            print("  [2/4] Added .netrc authentication to https_download_file()")
         else:
-            print("  [2/3] WARNING: Could not find CONNECTTIMEOUT line in https_download_file")
+            print("  [2/4] WARNING: Could not find CONNECTTIMEOUT line in https_download_file")
 
     # ──────────────────────────────────────────────────────────────
     # PATCH 3: Replace download_cors_station with CDDIS fallback
@@ -74,6 +84,7 @@ def patch(source: str) -> str:
     match = func_pattern.search(patched)
     if match:
         new_func = '''def download_cors_station(time, station_name, cache_dir):
+  import logging  # ensure logging is available regardless of top-level imports
   t = time.as_datetime()
 
   # ── Step 1: try US CORS servers (works for US stations like those
@@ -129,9 +140,9 @@ def patch(source: str) -> str:
 
 '''
         patched = patched[:match.start()] + new_func + patched[match.end():]
-        print("  [3/3] Replaced download_cors_station() with CDDIS fallback version")
+        print("  [3/4] Replaced download_cors_station() with CDDIS fallback version")
     else:
-        print("  [3/3] WARNING: Could not find download_cors_station function")
+        print("  [3/4] WARNING: Could not find download_cors_station function")
 
     return patched
 

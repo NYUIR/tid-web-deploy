@@ -36,8 +36,9 @@ RUN if [ $(ls -d /app/missile-tid-raw/*/ 2>/dev/null | wc -l) -eq 1 ] && \
 # Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install pycurl separately with the correct SSL backend
-RUN pip install --no-cache-dir pycurl --global-option="--with-openssl"
+# Install pycurl with OpenSSL backend via environment variable
+ENV PYCURL_SSL_LIBRARY=openssl
+RUN pip install --no-cache-dir pycurl
 
 # Install compatible versions of Shapely and Cartopy for Ubuntu 22.04 GEOS
 RUN pip install --no-cache-dir "Shapely>=2.0,<3.0"

@@ -82,6 +82,11 @@ LIVE_SCRIPT = find_any_file([
     "Live.py",
 ])
 
+KAPUSTIN_YAR_SCRIPT = find_any_file([
+    "kapustin_yar.py",
+    "Kapustin_Yar.py",
+])
+
 MISSILE_TID_ROOT = None
 req_file = find_file("requirements.txt", "missile-tid")
 if req_file:
@@ -89,6 +94,7 @@ if req_file:
 
 logger.info("Vandenberg script: %s", VANDENBERG_SCRIPT)
 logger.info("Live script: %s", LIVE_SCRIPT)
+logger.info("Kapustin Yar script: %s", KAPUSTIN_YAR_SCRIPT)
 logger.info("Missile-TID root: %s", MISSILE_TID_ROOT)
 
 # ---------------------------------------------------------------------------
@@ -116,7 +122,7 @@ def _run_demo(job_id, demo_script, extra_args=None):
             cmd,
             capture_output=True,
             text=True,
-            timeout=int(os.environ.get("JOB_TIMEOUT", 600)),
+            timeout=int(os.environ.get("JOB_TIMEOUT", 3600)),
             cwd=cwd,
             env={
                 **os.environ,
@@ -195,6 +201,18 @@ def list_demos():
             "available": LIVE_SCRIPT is not None,
             "type": "live",
         },
+        {
+            "id": "kapustin_yar",
+            "name": "Kapustin Yar — 8 January 2026",
+            "description": (
+                "Replay detection analysis of the Kapustin Yar region, Russia "
+                "on 8 January 2026 (23:20 Kyiv time / 21:20 UTC). Uses IGS "
+                "stations across Eastern Europe and Western Asia via CDDIS."
+            ),
+            "script": KAPUSTIN_YAR_SCRIPT or "NOT FOUND",
+            "available": KAPUSTIN_YAR_SCRIPT is not None,
+            "type": "replay",
+        },
     ]
     return jsonify(demos)
 
@@ -203,10 +221,15 @@ def list_demos():
 def run_demo():
     body = request.get_json(force=True)
     demo_id = body.get("demo_id")
-    if demo_id not in ("vandenberg", "korea"):
+    if demo_id not in ("vandenberg", "korea", "kapustin_yar"):
         return jsonify({"error": "Unknown demo_id"}), 400
 
-    script = VANDENBERG_SCRIPT if demo_id == "vandenberg" else LIVE_SCRIPT
+    script_map = {
+        "vandenberg": VANDENBERG_SCRIPT,
+        "korea": LIVE_SCRIPT,
+        "kapustin_yar": KAPUSTIN_YAR_SCRIPT,
+    }
+    script = script_map.get(demo_id)
     if not script:
         return jsonify({
             "error": "Demo script not found in missile-tid directory.",
@@ -221,11 +244,12 @@ def run_demo():
 
     # Each demo script has different argument formats:
     # vandenberg.py uses: -o OUTPUT_PATH [-v]
-    # live.py uses: output_folder [hours_to_run]
-    if demo_id == "vandenberg":
+    # kapustin_yar.py uses: -o OUTPUT_PATH [-v]
+    # live.py (one-shot) uses: output_folder
+    if demo_id in ("vandenberg", "kapustin_yar"):
         extra_args = ["-o", abs_output_dir]
     else:
-        extra_args = [abs_output_dir, "1"]
+        extra_args = [abs_output_dir]
 
     jobs[job_id] = {
         "job_id": job_id,
@@ -269,6 +293,7 @@ def health():
         "timestamp": datetime.utcnow().isoformat(),
         "vandenberg_script": VANDENBERG_SCRIPT,
         "live_script": LIVE_SCRIPT,
+        "kapustin_yar_script": KAPUSTIN_YAR_SCRIPT,
         "missile_tid_root": MISSILE_TID_ROOT,
         "all_py_files": find_all_files(),
     })

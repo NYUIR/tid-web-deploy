@@ -94,7 +94,8 @@
       color: var(--text-dim); font-size: 0.9rem; line-height: 1.6;
       max-width: 680px; margin-bottom: 2rem;
     }
-    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 2.5rem; }
+    .cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; margin-bottom: 2.5rem; }
+    @media (max-width: 1100px) { .cards { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
     .card {
       background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
@@ -329,6 +330,16 @@
         <h3>Korean Peninsula Monitor</h3>
         <p>Monitors GNSS receiver data around the Korean peninsula for potential ballistic missile launches.</p>
       </div>
+      <div class="card" data-demo="kapustin_yar" onclick="selectDemo(this)">
+        <span class="card-badge badge-replay">Replay</span>
+        <div class="card-check">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h3>Kapustin Yar — 8 Jan 2026</h3>
+        <p>Replay detection analysis of the Kapustin Yar region on 8 January 2026, 23:20 Kyiv time (21:20 UTC). Uses IGS stations via CDDIS.</p>
+      </div>
     </div>
 
     <div class="fade-up delay-2" style="display:flex;align-items:center;gap:1rem;">
@@ -395,7 +406,9 @@
     document.getElementById("errorBanner").style.display = "none";
     document.getElementById("runHint").textContent = selectedDemo === "vandenberg"
       ? "Vandenberg Falcon 9 replay selected"
-      : "Korean peninsula monitor selected";
+      : selectedDemo === "korea"
+      ? "Korean peninsula monitor selected"
+      : "Kapustin Yar replay selected";
   }
 
   function showError(msg) {
@@ -478,7 +491,12 @@
     list.innerHTML = "";
     var row = document.createElement("div");
     row.className = "job-row";
-    var demoName = job.demo_id === "vandenberg" ? "Vandenberg Falcon 9" : "Korean Peninsula";
+    var demoNames = {
+      "vandenberg": "Vandenberg Falcon 9",
+      "korea": "Korean Peninsula",
+      "kapustin_yar": "Kapustin Yar 8 Jan 2026"
+    };
+    var demoName = demoNames[job.demo_id] || job.demo_id;
     var time = job.created_at ? job.created_at.slice(11,19) : "";
     row.innerHTML =
       '<span class="job-id">' + (job.job_id || "—") + '</span>' +

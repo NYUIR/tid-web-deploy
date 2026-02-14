@@ -33,8 +33,14 @@ RUN if [ $(ls -d /app/missile-tid-raw/*/ 2>/dev/null | wc -l) -eq 1 ] && \
 # Install pycurl separately with the correct SSL backend
 RUN pip install --no-cache-dir pycurl --global-option="--with-openssl"
 
-# Install remaining requirements (skip pycurl since it's already installed)
-RUN sed '/pycurl/d' /app/missile-tid/requirements.txt > /tmp/requirements-filtered.txt \
+# Install Cython first (needed for Shapely source build)
+RUN pip install --no-cache-dir Cython
+
+# Install Shapely from source to avoid "free(): invalid size" bug
+RUN pip install --no-cache-dir --force-reinstall shapely --no-binary shapely
+
+# Install remaining requirements (skip pycurl and Shapely since they're already installed)
+RUN sed '/pycurl/d; /Shapely/d; /shapely/d' /app/missile-tid/requirements.txt > /tmp/requirements-filtered.txt \
     && pip install --no-cache-dir -r /tmp/requirements-filtered.txt
 
 # Make missile-tid importable via PYTHONPATH

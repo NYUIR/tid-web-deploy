@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcurl4-openssl-dev \
         libssl-dev \
         libgeos-dev \
+        libgeos++-dev \
         python3 python3-pip python3-dev \
         git \
         curl \
@@ -33,18 +34,18 @@ RUN if [ $(ls -d /app/missile-tid-raw/*/ 2>/dev/null | wc -l) -eq 1 ] && \
 # Install pycurl separately with the correct SSL backend
 RUN pip install --no-cache-dir pycurl --global-option="--with-openssl"
 
-# Install Cython first (needed for Shapely source build)
-RUN pip install --no-cache-dir Cython
-
-# Install Shapely from source to avoid "free(): invalid size" bug
-RUN pip install --no-cache-dir --force-reinstall shapely --no-binary shapely
-
-# Install remaining requirements (skip pycurl and Shapely since they're already installed)
+# Install remaining requirements (skip pycurl and Shapely)
 RUN sed '/pycurl/d; /Shapely/d; /shapely/d' /app/missile-tid/requirements.txt > /tmp/requirements-filtered.txt \
     && pip install --no-cache-dir -r /tmp/requirements-filtered.txt
 
+# Install Shapely separately — use 2.0+ which fixes the free() bug
+RUN pip install --no-cache-dir "Shapely>=2.0,<3.0"
+
 # Make missile-tid importable via PYTHONPATH
 ENV PYTHONPATH="/app/missile-tid:${PYTHONPATH}"
+
+# Use non-interactive matplotlib backend to avoid display issues
+ENV MPLBACKEND=agg
 
 # Copy the example config if it exists
 RUN if [ -f /app/missile-tid/config/configuration.yml.example ]; then \

@@ -52,9 +52,9 @@ RUN if [ -f missile-tid/config/configuration.yml.example ] && \
 RUN pip install --no-cache-dir -r requirements-web.txt
 
 # ── Apply the laika CDDIS patch ──
-# This patches laika's downloader.py to add NASA CDDIS as a fallback
-# source for international IGS station RINEX data, and enables .netrc
-# authentication in pycurl for NASA Earthdata OAuth.
+# Surgically patches laika's installed downloader.py to add CDDIS as
+# a fallback source for international IGS stations. Does NOT replace
+# the file — preserves all existing functions.
 RUN chmod +x patches/apply_laika_patch.sh && \
     bash patches/apply_laika_patch.sh
 
